@@ -1,332 +1,202 @@
-import * as THREE from 'three';
-
-const socket = io();
-
-// ---------- DOM refs ----------
-const lobbyEl = document.getElementById('lobby');
-const gameEl = document.getElementById('game');
-const gamesListEl = document.getElementById('games-list');
-const createForm = document.getElementById('create-form');
-const createNameInput = document.getElementById('create-name');
-const playerNameInput = document.getElementById('player-name');
-const leaveBtn = document.getElementById('leave-btn');
-const gameNameLabel = document.getElementById('game-name-label');
-const chatLog = document.getElementById('chat-log');
-const chatForm = document.getElementById('chat-form');
-const chatInput = document.getElementById('chat-input');
-
-let currentGameId = null;
-
-// ---------- Lobby ----------
-function initLobby() {
-  socket.emit('lobby:list');
-}
-
-socket.on('lobby:update', (games) => renderGamesList(games));
-
-function escapeHtml(str) {
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
-}
-
-function renderGamesList(games) {
-  gamesListEl.innerHTML = '';
-  if (!games.length) {
-    gamesListEl.innerHTML = '<div class="empty">No games yet. Create one!</div>';
-    return;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>3D Multiplayer Arena</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1f232c;
+    --accent: #4f9dff;
+    --accent-2: #ff6b6b;
+    --text: #e7e9ee;
+    --muted: #8a92a3;
+    --border: #2a2f3a;
   }
-  games.forEach((g) => {
-    const row = document.createElement('div');
-    row.className = 'game-row';
-    row.innerHTML = `
-      <span class="game-name">${escapeHtml(g.name)}</span>
-      <span class="game-count">${g.playerCount} player${g.playerCount === 1 ? '' : 's'}</span>
-      <button class="btn-primary join-btn" data-id="${g.id}">Join</button>
-      <button class="btn-danger delete-btn" data-id="${g.id}">Delete</button>
-    `;
-    gamesListEl.appendChild(row);
-  });
-}
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
 
-gamesListEl.addEventListener('click', (e) => {
-  const id = e.target.dataset.id;
-  if (!id) return;
-  if (e.target.classList.contains('join-btn')) joinGame(id);
-  if (e.target.classList.contains('delete-btn')) socket.emit('game:delete', id);
-});
+  /* ---------- Lobby ---------- */
+  #lobby {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  #lobby-card {
+    width: 100%;
+    max-width: 560px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  #lobby-card h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    letter-spacing: -0.02em;
+  }
+  #lobby-card .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 22px;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  input[type="text"] {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+  }
+  input[type="text"]:focus { border-color: var(--accent); }
+  .field { margin-bottom: 16px; }
 
-createForm.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const name = createNameInput.value.trim() || 'Untitled Game';
-  socket.emit('game:create', name, ({ gameId }) => joinGame(gameId));
-  createNameInput.value = '';
-});
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 14px;
+    transition: transform 0.05s ease, opacity 0.15s ease;
+  }
+  button:active { transform: scale(0.97); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-danger { background: transparent; color: var(--accent-2); border: 1px solid rgba(255,107,107,0.4); }
+  .btn-secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
 
-function joinGame(gameId) {
-  const playerName = playerNameInput.value.trim() || `Player${Math.floor(Math.random() * 1000)}`;
-  socket.emit('game:join', { gameId, playerName }, (res) => {
-    if (res && res.error) {
-      alert(res.error);
-      return;
+  #create-form { display: flex; gap: 8px; margin-bottom: 22px; }
+  #create-form input { flex: 1; }
+
+  hr.sep { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+  #games-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; }
+  .game-row {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    padding: 10px 12px; border-radius: 10px;
+  }
+  .game-name { flex: 1; font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game-count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 12px 0; }
+
+  /* ---------- Game ---------- */
+  #game { display: none; height: 100%; position: relative; overflow: hidden; }
+  #scene { position: absolute; inset: 0; display: block; }
+
+  #hud {
+    position: absolute; top: 14px; left: 14px;
+    background: rgba(15,17,21,0.7);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 14px;
+    display: flex; align-items: center; gap: 12px;
+    backdrop-filter: blur(6px);
+  }
+  #game-name-label { font-weight: 700; font-size: 14px; }
+  #controls-hint { color: var(--muted); font-size: 11px; }
+
+  #chat {
+    position: absolute; left: 14px; bottom: 14px;
+    width: 300px;
+    background: rgba(15,17,21,0.75);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    backdrop-filter: blur(6px);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  #chat-log {
+    max-height: 180px; overflow-y: auto;
+    padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 13px;
+  }
+  .chat-msg { line-height: 1.35; word-break: break-word; }
+  .chat-msg strong { color: var(--accent); }
+  #chat-form { display: flex; border-top: 1px solid var(--border); }
+  #chat-input {
+    flex: 1; background: transparent; border: none; color: var(--text);
+    padding: 10px 12px; font-size: 13px; outline: none;
+  }
+  #chat-form button {
+    border-radius: 0; background: var(--accent); color: #fff; padding: 10px 14px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- LOBBY -->
+  <div id="lobby">
+    <div id="lobby-card">
+      <h1>3D Multiplayer Arena</h1>
+      <div class="subtitle">Create a game, join one, or clear out old ones.</div>
+
+      <div class="field">
+        <label for="player-name">Your name</label>
+        <input type="text" id="player-name" placeholder="Enter your name" maxlength="20" />
+      </div>
+
+      <form id="create-form">
+        <input type="text" id="create-name" placeholder="New game name" maxlength="40" />
+        <button type="submit" class="btn-primary">Create</button>
+      </form>
+
+      <hr class="sep" />
+
+      <label>Active games</label>
+      <div id="games-list">
+        <div class="empty">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME -->
+  <div id="game">
+    <canvas id="scene"></canvas>
+
+    <div id="hud">
+      <span id="game-name-label"></span>
+      <span id="controls-hint">WASD to move &middot; A/D to turn</span>
+      <button id="leave-btn" class="btn-secondary">Leave</button>
+    </div>
+
+    <div id="chat">
+      <div id="chat-log"></div>
+      <form id="chat-form">
+        <input type="text" id="chat-input" placeholder="Say something…" maxlength="200" autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+      }
     }
-    currentGameId = gameId;
-    enterGame(res);
-  });
-}
-
-// ---------- Game entry/exit ----------
-function enterGame(state) {
-  lobbyEl.style.display = 'none';
-  gameEl.style.display = 'block';
-  gameNameLabel.textContent = state.gameName;
-  chatLog.innerHTML = '';
-  state.messages.forEach(addChatMessage);
-
-  setupScene();
-  state.players.forEach((p) => {
-    if (p.id === state.self.id) setLocalPlayer(p);
-    else addRemotePlayer(p);
-  });
-  animate();
-}
-
-function exitGame() {
-  cleanupScene();
-  gameEl.style.display = 'none';
-  lobbyEl.style.display = 'flex';
-  currentGameId = null;
-  socket.emit('lobby:list');
-}
-
-leaveBtn.addEventListener('click', () => {
-  socket.emit('game:leave');
-  exitGame();
-});
-
-socket.on('game:deleted', () => {
-  if (currentGameId) {
-    alert('This game was deleted.');
-    exitGame();
-  }
-});
-
-socket.on('player:joined', (p) => {
-  if (currentGameId) addRemotePlayer(p);
-});
-
-socket.on('player:left', (id) => removeRemotePlayer(id));
-
-socket.on('player:update', ({ id, position, rotationY }) => {
-  const rp = remotePlayers.get(id);
-  if (rp) {
-    rp.targetPosition.set(position.x, position.y, position.z);
-    rp.targetRotationY = rotationY;
-  }
-});
-
-// ---------- Chat ----------
-socket.on('chat:message', (msg) => addChatMessage(msg));
-
-chatForm.addEventListener('submit', (e) => {
-  e.preventDefault();
-  const text = chatInput.value.trim();
-  if (!text) return;
-  socket.emit('chat:send', text);
-  chatInput.value = '';
-});
-
-function addChatMessage(msg) {
-  const div = document.createElement('div');
-  div.className = 'chat-msg';
-  div.innerHTML = `<strong>${escapeHtml(msg.name)}:</strong> ${escapeHtml(msg.text)}`;
-  chatLog.appendChild(div);
-  chatLog.scrollTop = chatLog.scrollHeight;
-}
-
-// ---------- Three.js scene ----------
-let scene, camera, renderer, clock;
-let animId = null;
-let lastSent = 0;
-const keys = {};
-const localPlayer = { mesh: null, position: new THREE.Vector3(), rotationY: 0 };
-const remotePlayers = new Map();
-
-function setupScene() {
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb);
-  scene.fog = new THREE.Fog(0x87ceeb, 20, 90);
-
-  camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
-
-  renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('scene'), antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x445566, 1.1);
-  scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.9);
-  dir.position.set(15, 25, 10);
-  scene.add(dir);
-
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(200, 200),
-    new THREE.MeshStandardMaterial({ color: 0x3d9140 })
-  );
-  ground.rotation.x = -Math.PI / 2;
-  scene.add(ground);
-
-  const grid = new THREE.GridHelper(200, 40, 0x225522, 0x225522);
-  scene.add(grid);
-
-  for (let i = 0; i < 14; i++) {
-    const size = 1 + Math.random() * 2.2;
-    const box = new THREE.Mesh(
-      new THREE.BoxGeometry(size, size, size),
-      new THREE.MeshStandardMaterial({ color: 0x8899aa })
-    );
-    box.position.set((Math.random() - 0.5) * 70, size / 2, (Math.random() - 0.5) * 70);
-    scene.add(box);
-  }
-
-  clock = new THREE.Clock();
-
-  window.addEventListener('resize', onResize);
-  window.addEventListener('keydown', onKeyDown);
-  window.addEventListener('keyup', onKeyUp);
-}
-
-function onKeyDown(e) {
-  // avoid capturing keys while typing in chat
-  if (document.activeElement === chatInput) return;
-  keys[e.code] = true;
-}
-function onKeyUp(e) { keys[e.code] = false; }
-
-function onResize() {
-  if (!camera || !renderer) return;
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-}
-
-function makePlayerMesh(color) {
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.4, 0.8, 4, 8),
-    new THREE.MeshStandardMaterial({ color })
-  );
-  body.position.y = 0.9;
-  group.add(body);
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.3, 12, 12),
-    new THREE.MeshStandardMaterial({ color })
-  );
-  head.position.y = 1.55;
-  group.add(head);
-  return group;
-}
-
-function setLocalPlayer(p) {
-  localPlayer.position.set(p.position.x, p.position.y, p.position.z);
-  localPlayer.rotationY = p.rotationY;
-  localPlayer.mesh = makePlayerMesh(p.color);
-  localPlayer.mesh.position.copy(localPlayer.position);
-  scene.add(localPlayer.mesh);
-}
-
-function addRemotePlayer(p) {
-  if (remotePlayers.has(p.id)) return;
-  const mesh = makePlayerMesh(p.color);
-  mesh.position.set(p.position.x, p.position.y, p.position.z);
-  scene.add(mesh);
-  remotePlayers.set(p.id, {
-    mesh,
-    targetPosition: new THREE.Vector3(p.position.x, p.position.y, p.position.z),
-    targetRotationY: p.rotationY
-  });
-}
-
-function removeRemotePlayer(id) {
-  const rp = remotePlayers.get(id);
-  if (rp) {
-    scene.remove(rp.mesh);
-    remotePlayers.delete(id);
-  }
-}
-
-function cleanupScene() {
-  if (animId) cancelAnimationFrame(animId);
-  animId = null;
-  remotePlayers.forEach((rp) => scene.remove(rp.mesh));
-  remotePlayers.clear();
-  if (localPlayer.mesh) scene.remove(localPlayer.mesh);
-  localPlayer.mesh = null;
-  window.removeEventListener('resize', onResize);
-  window.removeEventListener('keydown', onKeyDown);
-  window.removeEventListener('keyup', onKeyUp);
-}
-
-const SPEED = 5;
-const TURN_SPEED = 2.5;
-
-function animate() {
-  animId = requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.1);
-  updateLocalPlayer(dt);
-  updateRemoteInterpolation(dt);
-  updateCamera();
-  renderer.render(scene, camera);
-}
-
-function updateLocalPlayer(dt) {
-  if (!localPlayer.mesh) return;
-  let moved = false;
-
-  if (keys['KeyA'] || keys['ArrowLeft']) { localPlayer.rotationY += TURN_SPEED * dt; moved = true; }
-  if (keys['KeyD'] || keys['ArrowRight']) { localPlayer.rotationY -= TURN_SPEED * dt; moved = true; }
-
-  const forward = new THREE.Vector3(Math.sin(localPlayer.rotationY), 0, Math.cos(localPlayer.rotationY));
-  if (keys['KeyW'] || keys['ArrowUp']) { localPlayer.position.addScaledVector(forward, SPEED * dt); moved = true; }
-  if (keys['KeyS'] || keys['ArrowDown']) { localPlayer.position.addScaledVector(forward, -SPEED * dt); moved = true; }
-
-  localPlayer.position.x = THREE.MathUtils.clamp(localPlayer.position.x, -95, 95);
-  localPlayer.position.z = THREE.MathUtils.clamp(localPlayer.position.z, -95, 95);
-
-  localPlayer.mesh.position.copy(localPlayer.position);
-  localPlayer.mesh.rotation.y = localPlayer.rotationY;
-
-  const now = performance.now();
-  if (moved && now - lastSent > 50) {
-    lastSent = now;
-    socket.emit('player:update', {
-      position: { x: localPlayer.position.x, y: localPlayer.position.y, z: localPlayer.position.z },
-      rotationY: localPlayer.rotationY
-    });
-  }
-}
-
-function updateRemoteInterpolation(dt) {
-  const t = Math.min(1, dt * 10);
-  remotePlayers.forEach((rp) => {
-    rp.mesh.position.lerp(rp.targetPosition, t);
-    rp.mesh.rotation.y += (rp.targetRotationY - rp.mesh.rotation.y) * t;
-  });
-}
-
-function updateCamera() {
-  if (!localPlayer.mesh) return;
-  const offset = new THREE.Vector3(
-    -Math.sin(localPlayer.rotationY) * 6,
-    3.5,
-    -Math.cos(localPlayer.rotationY) * 6
-  );
-  const desired = localPlayer.position.clone().add(offset);
-  camera.position.lerp(desired, 0.1);
-  const lookTarget = localPlayer.position.clone();
-  lookTarget.y += 1;
-  camera.lookAt(lookTarget);
-}
-
-// ---------- Boot ----------
-initLobby();
+  </script>
+  <script type="module" src="client.js"></script>
+</body>
+</html>
