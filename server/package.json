@@ -2,12 +2,12 @@
   "name": "3d-multiplayer-game-server",
   "version": "1.0.0",
   "description": "Server for the 3D multiplayer arena game",
-  "main": "server.js",
+  "main": "index-server.js",
   "engines": {
     "node": ">=18.0.0"
   },
   "scripts": {
-    "start": "node server.js"
+    "start": "node index-server.js"
   },
   "dependencies": {
     "express": "^4.19.2",
