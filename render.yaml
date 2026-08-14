@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: 3d-multiplayer-game
+    env: node
+    plan: free
+    buildCommand: cd server && npm install
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 18.20.0
